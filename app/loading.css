@@ -1,0 +1,59 @@
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.loading-input,
+.loading-select,
+.loading-button,
+.loading-text,
+.loading-title,
+.loading-label,
+.loading-value {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.loading-input,
+.loading-select {
+  height: 42px;
+  width: 100%;
+}
+
+.loading-button {
+  height: 42px;
+  width: 120px;
+}
+
+.loading-text {
+  height: 20px;
+  width: 150px;
+  margin: 1rem 0;
+}
+
+.loading-card {
+  border-top: 4px solid #f0f0f0;
+}
+
+.loading-title {
+  height: 24px;
+  width: 70%;
+  margin-bottom: 1rem;
+}
+
+.loading-label {
+  height: 16px;
+  width: 30%;
+  margin-bottom: 0.25rem;
+}
+
+.loading-value {
+  height: 18px;
+  width: 90%;
+}

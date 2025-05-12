@@ -1,0 +1,44 @@
+/* Add these styles to your global CSS file */
+
+/* Progress Bar Styles */
+.progress-container {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.progress-label {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.progress-bar {
+  height: 10px;
+  background-color: #e9ecef;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #007bff;
+  transition: width 0.3s ease;
+}
+
+/* Task Info Styles */
+.task-info {
+  margin-top: 1rem;
+  padding: 0.5rem;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.task-label {
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.task-value {
+  font-family: monospace;
+}

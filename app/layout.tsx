@@ -1,0 +1,57 @@
+import type React from "react"
+import type { Metadata } from "next"
+import Link from "next/link"
+import "./styles.css"
+import "./scraper-control/scraper-control.css"
+import "./cors-test/cors-test.css"
+
+export const metadata: Metadata = {
+  title: "Restaurant Scraper",
+  description: "A simple restaurant scraper application",
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+      </head>
+      <body>
+        <nav className="navbar">
+          <div className="nav-container">
+            <div className="logo">Restaurant Scraper</div>
+            <ul className="nav-menu">
+              <li className="nav-item">
+                <Link href="/" className="nav-link">
+                  Scrape
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link href="/results" className="nav-link">
+                  Results
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link href="/scraper-control" className="nav-link">
+                  Control Panel
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link href="/cors-test" className="nav-link">
+                  CORS Test
+                </Link>
+              </li>
+            </ul>
+          </div>
+        </nav>
+        <main className="main-content">{children}</main>
+      </body>
+    </html>
+  )
+}
