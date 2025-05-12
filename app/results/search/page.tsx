@@ -4,7 +4,9 @@ import SearchComponent from "../search-component"
 export default async function SearchResultsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+  searchParams:
+    | Promise<{ [key: string]: string | string[] | undefined }>
+    | { [key: string]: string | string[] | undefined }
 }) {
   // Await searchParams before accessing its properties
   const params = await searchParams

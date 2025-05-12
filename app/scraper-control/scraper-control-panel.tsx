@@ -21,7 +21,7 @@ type ScraperControlPanelProps = {
 }
 
 // Flask API base URL
-const FLASK_API_URL = "http://localhost:5000"
+const FLASK_API_URL = "http://34.89.71.45:5000"
 
 export function ScraperControlPanel({ initialCity, initialKeyword }: ScraperControlPanelProps) {
   // State for city and keyword inputs
@@ -721,7 +721,7 @@ export function ScraperControlPanel({ initialCity, initialKeyword }: ScraperCont
                 value={city}
                 onChange={handleCityInputChange}
                 autoComplete="off"
-                disabled={gmapsTask.status === "running" || emailTask.status === "running"}
+                disabled={false} // Never disable the city input
               />
 
               {showCityDropdown && (
@@ -763,7 +763,7 @@ export function ScraperControlPanel({ initialCity, initialKeyword }: ScraperCont
               placeholder="Enter keyword (e.g. restaurants, cafes)"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              disabled={gmapsTask.status === "running" || emailTask.status === "running"}
+              disabled={false} // Never disable the keyword input
             />
           </div>
         </div>
@@ -773,7 +773,7 @@ export function ScraperControlPanel({ initialCity, initialKeyword }: ScraperCont
             <button
               className="action-button start-button"
               onClick={handleStartScraping}
-              disabled={!city || emailTask.status === "running" || flaskConnected === false}
+              disabled={!city || flaskConnected === false}
             >
               Start Scraping
             </button>
@@ -787,11 +787,13 @@ export function ScraperControlPanel({ initialCity, initialKeyword }: ScraperCont
             </button>
           )}
 
+          {/* Email scraper button - always enabled when city is selected */}
           {emailTask.status !== "running" ? (
             <button
               className="action-button email-button"
               onClick={handleStartEmailScraping}
-              disabled={!city || gmapsTask.status === "running" || flaskConnected === false}
+              disabled={!city || flaskConnected === false}
+              style={{ opacity: 1 }} // Ensure full opacity
             >
               Start Email Scraping
             </button>

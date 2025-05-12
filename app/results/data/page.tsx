@@ -1,46 +1,51 @@
-import { getCollectionData } from "../db-actions"
-import DataTable from "./data-table"
+import { Suspense } from "react"
 import Link from "next/link"
+import { getCollectionData } from "../db-actions"
+import DataTable from "../data-table"
+import "../results.css"
 
-// Define the page component
 export default async function DataPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined }
+  searchParams:
+    | Promise<{ [key: string]: string | string[] | undefined }>
+    | { [key: string]: string | string[] | undefined }
 }) {
+  // Await searchParams before accessing its properties
+  const params = await searchParams
+
   // Get database and collection parameters
-  const dbParam = searchParams.db
+  const dbParam = params.db
   const db = typeof dbParam === "string" ? dbParam : ""
 
-  const collectionParam = searchParams.collection
+  const collectionParam = params.collection
   const collection = typeof collectionParam === "string" ? collectionParam : ""
 
   // Get page parameter and parse it safely
-  const pageParam = searchParams.page
+  const pageParam = params.page
   const page = typeof pageParam === "string" ? Number.parseInt(pageParam, 10) || 1 : 1
 
   // Get limit parameter and parse it safely
-  const limitParam = searchParams.limit
+  const limitParam = params.limit
   const limit = typeof limitParam === "string" ? Number.parseInt(limitParam, 10) || 20 : 20
 
   if (!db || !collection) {
     return (
       <div className="container">
-        <h1>No Database or Collection Selected</h1>
-        <p>Please select a database and collection to view data.</p>
-        <Link href="/results" className="back-button">
-          Back to Results
-        </Link>
+        <h1>Database Data</h1>
+        <div className="no-data">
+          <p>Please specify both database and collection parameters.</p>
+          <Link href="/results">
+            <button className="btn">Back to Results</button>
+          </Link>
+        </div>
       </div>
     )
   }
 
   try {
-    console.log(`Fetching data from ${db}.${collection}, page=${page}, limit=${limit}`)
-    const { data, totalCount } = await getCollectionData(db, collection, page, limit)
-    console.log(`Fetched ${data.length} documents from ${db}.${collection}`)
-
-    const totalPages = Math.ceil(totalCount / limit)
+    // Get data from the specified database and collection
+    const { data, pagination } = await getCollectionData(db, collection, page, limit)
 
     return (
       <div className="container">
@@ -48,60 +53,31 @@ export default async function DataPage({
           Database: {db} / Collection: {collection}
         </h1>
 
-        <div className="action-buttons">
-          <Link href="/results" className="back-button">
-            Back to Results
+        <div className="navigation">
+          <Link href="/results">
+            <button className="btn">Back to Results</button>
           </Link>
-
-          <div className="email-scraper-container">
-            <Link href={`/results/email-scraper?db=${db}&collection=${collection}`} className="email-scraper-button">
-              Start Email Scraper
-            </Link>
-          </div>
         </div>
 
-        <div className="pagination-info">
-          Showing {data.length} of {totalCount} records (Page {page} of {totalPages})
-        </div>
-
-        <DataTable data={data} />
-
-        <div className="pagination">
-          {page > 1 && (
-            <Link
-              href={`/results/data?db=${db}&collection=${collection}&page=${page - 1}&limit=${limit}`}
-              className="pagination-button"
-            >
-              Previous
-            </Link>
-          )}
-
-          <span className="pagination-info">
-            Page {page} of {totalPages}
-          </span>
-
-          {page < totalPages && (
-            <Link
-              href={`/results/data?db=${db}&collection=${collection}&page=${page + 1}&limit=${limit}`}
-              className="pagination-button"
-            >
-              Next
-            </Link>
-          )}
-        </div>
+        <Suspense fallback={<div>Loading data...</div>}>
+          <DataTable data={data} pagination={pagination} db={db} collection={collection} />
+        </Suspense>
       </div>
     )
   } catch (error) {
-    console.error(`Error fetching data:`, error)
+    console.error(`Error fetching data from ${db}.${collection}:`, error)
+
     return (
       <div className="container">
-        <h1>Error Loading Data</h1>
-        <p>
-          There was an error loading data from {db}.{collection}.
-        </p>
-        <Link href="/results" className="back-button">
-          Back to Results
-        </Link>
+        <h1>Database Data</h1>
+        <div className="no-data">
+          <p>
+            An error occurred while fetching data from {db}.{collection}.
+          </p>
+          <Link href="/results">
+            <button className="btn">Back to Results</button>
+          </Link>
+        </div>
       </div>
     )
   }

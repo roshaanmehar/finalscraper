@@ -135,47 +135,22 @@ const UK_POSTCODE_AREAS = {
 // Flask API base URL - changed to the specified IP address
 const FLASK_API_URL = "http://34.89.71.45:5000"
 
-// Task state interface
-interface TaskState {
-  taskId: string
-  statusUrl: string
-  status: string
-  progress: number
-  message: string
-  totalSubsectors?: number
-  unprocessedSubsectors?: number
-  totalRecords?: number
-  pendingRecords?: number
-  emailsFound?: number
-  failedScrape?: number
-}
-
-// Scraper type enum
-enum ScraperType {
-  GMAPS = "gmaps",
-  EMAIL = "email",
-}
-
 export default function ScrapePage() {
   const router = useRouter()
-  const [city, setCity] = useState("")
-  const [keyword, setKeyword] = useState("")
+  const [city, setCity] = useState("Aberdeen")
+  const [keyword, setKeyword] = useState("restaurants")
   const [isSearching, setIsSearching] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [cityResults, setCityResults] = useState<City[]>([])
   const [selectedCity, setSelectedCity] = useState<City | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
-  const [isScraping, setIsScraping] = useState(false)
-  const [taskState, setTaskState] = useState<TaskState | null>(null)
-  const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null)
-  const [activeScraperType, setActiveScraperType] = useState<ScraperType | null>(null)
-  const [emailScraperStats, setEmailScraperStats] = useState<{
-    totalRecords: number
-    pendingRecords: number
-    emailsFound: number
-    failedScrape: number
+  const [progressInfo, setProgressInfo] = useState<{
+    total: number
+    processed: number
+    percentage: number
   } | null>(null)
+  const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -258,22 +233,7 @@ export default function ScrapePage() {
     }
   }
 
-  // Debounce function to prevent too many requests while typing
-  const debounce = (func: Function, delay: number) => {
-    let timeoutId: NodeJS.Timeout
-    return (...args: any[]) => {
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(() => {
-        func(...args)
-      }, delay)
-    }
-  }
-
-  // Debounced search function
-  const debouncedSearch = debounce(handleCitySearch, 300)
-
-  // Replace the debouncedSearch function call with the direct function call
-  // since we're not making API calls anymore
+  // Handle city input change
   const handleCityInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setCity(value)
@@ -287,343 +247,109 @@ export default function ScrapePage() {
     setShowDropdown(false)
   }
 
-  // Poll for scraper status
-  const startStatusPolling = (statusUrl: string, scraperType: ScraperType) => {
-    // First get status immediately
-    fetchScraperStatus(statusUrl, scraperType)
-
-    // Then set up polling
-    const intervalId = setInterval(() => fetchScraperStatus(statusUrl, scraperType), 5000)
-    setStatusPolling(intervalId)
-  }
-
-  // Stop status polling
-  const stopStatusPolling = () => {
-    if (statusPolling) {
-      clearInterval(statusPolling)
-      setStatusPolling(null)
-    }
-  }
-
-  // Reset the UI state after termination or completion
-  const resetUIState = () => {
-    setIsScraping(false)
-    setIsProcessing(false)
-    setTaskState(null)
-    setActiveScraperType(null)
-    stopStatusPolling()
-  }
-
-  // Calculate progress percentage for GMaps scraper
-  const calculateGMapsProgress = (total?: number, unprocessed?: number): number => {
-    if (!total || total <= 0 || !unprocessed) return 0
-    const processed = total - unprocessed
-    return Math.round((processed / total) * 100)
-  }
-
-  // Calculate progress percentage for Email scraper
-  const calculateEmailProgress = (total?: number, pending?: number): number => {
-    if (!total || total <= 0 || pending === undefined) return 0
-    const processed = total - pending
-    return Math.round((processed / total) * 100)
-  }
-
-  // Fetch current scraper status
-  const fetchScraperStatus = async (statusUrl: string, scraperType: ScraperType) => {
-    try {
-      // Direct call to Flask API using the status URL from the response
-      const response = await fetch(`${FLASK_API_URL}${statusUrl}`)
-      if (!response.ok) throw new Error("Failed to fetch status")
-
-      const data = await response.json()
-      console.log(`${scraperType.toUpperCase()} Status response:`, data)
-
-      if (scraperType === ScraperType.GMAPS) {
-        // Update task state based on GMaps response
-        setTaskState((prevState) => ({
-          ...prevState!,
-          status: data.status,
-          totalSubsectors: data.total_subsectors,
-          unprocessedSubsectors: data.unprocessed_subsectors,
-          progress: calculateGMapsProgress(data.total_subsectors, data.unprocessed_subsectors),
-          message: data.message || prevState?.message || "",
-        }))
-
-        // Update UI status message based on GMaps scraper status
-        if (data.status === "completed") {
-          setStatusMessage(`GMaps scrape completed: ${data.message || "Process finished successfully"}`)
-          resetUIState()
-        } else if (data.status === "error") {
-          setStatusMessage(`GMaps scrape error: ${data.message || "An error occurred"}`)
-          resetUIState()
-        } else if (data.status === "terminated") {
-          setStatusMessage(`GMaps scrape terminated: ${data.message || "Process was terminated"}`)
-          resetUIState()
-        } else if (data.status === "running") {
-          const progress = calculateGMapsProgress(data.total_subsectors, data.unprocessed_subsectors)
-          setStatusMessage(
-            `GMaps scrape in progress: ${progress}% complete (${data.total_subsectors - data.unprocessed_subsectors}/${data.total_subsectors} subsectors processed)`,
-          )
-          setIsScraping(true)
-        }
-      } else if (scraperType === ScraperType.EMAIL) {
-        // Update task state based on Email scraper response
-        setTaskState((prevState) => ({
-          ...prevState!,
-          status: data.status,
-          totalRecords: data.total_records,
-          pendingRecords: data.pending_records,
-          emailsFound: data.emails_found,
-          failedScrape: data.failed_scrape,
-          progress: calculateEmailProgress(data.total_records, data.pending_records),
-          message: data.message || prevState?.message || "",
-        }))
-
-        // Update UI status message based on Email scraper status
-        if (data.status === "completed") {
-          setStatusMessage(`Email scrape completed: ${data.message || "Process finished successfully"}`)
-          resetUIState()
-        } else if (data.status === "error") {
-          setStatusMessage(`Email scrape error: ${data.message || "An error occurred"}`)
-          resetUIState()
-        } else if (data.status === "terminated") {
-          setStatusMessage(`Email scrape terminated: ${data.message || "Process was terminated"}`)
-          resetUIState()
-        } else if (data.status === "running") {
-          const progress = calculateEmailProgress(data.total_records, data.pending_records)
-          setStatusMessage(
-            `Email scrape in progress: ${progress}% complete (${data.emails_found} emails found, ${data.pending_records} pending, ${data.failed_scrape} failed)`,
-          )
-          setIsScraping(true)
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching ${scraperType} status:`, error)
-      setStatusMessage(`Error fetching status: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-
-  // Terminate the scraping process
-  const terminateScraping = async () => {
-    if (!taskState || !taskState.taskId || !activeScraperType) {
-      alert("No active task to terminate")
-      return
-    }
+  // Function to start the scraping process
+  const startScrape = async () => {
+    setIsLoading(true)
+    setStatusMessage("Starting scrape process...")
 
     try {
-      setStatusMessage(`Terminating ${activeScraperType} scraping process...`)
-
-      // Direct call to Flask API using the task ID
-      const terminateEndpoint = activeScraperType === ScraperType.GMAPS ? "terminateGM" : "terminateES"
-      const terminateUrl = `${FLASK_API_URL}/api/${terminateEndpoint}/${taskState.taskId}`
-      console.log(`Terminating ${activeScraperType} scrape with URL:`, terminateUrl)
-
-      const response = await fetch(terminateUrl, {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to terminate scraping: ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log("Termination response:", data)
-
-      if (data.status === "terminated") {
-        setStatusMessage(
-          `${activeScraperType.charAt(0).toUpperCase() + activeScraperType.slice(1)} scraping terminated: ${data.message}`,
-        )
-        // Reset UI state immediately after successful termination
-        resetUIState()
-      } else {
-        setStatusMessage(`Termination status: ${data.message || "Unknown status"}`)
-      }
-    } catch (error) {
-      console.error(`Error terminating ${activeScraperType} scrape:`, error)
-      setStatusMessage(`Error terminating scrape: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-
-  // Navigate to results page with current city and keyword
-  const goToResults = () => {
-    if (selectedCity) {
-      router.push(
-        `/results?city=${encodeURIComponent(selectedCity.postcode_area)}&keyword=${encodeURIComponent(keyword || "restaurant")}`,
-      )
-    }
-  }
-
-  // Check email scraper status
-  const checkEmailScraperStatus = async () => {
-    if (!selectedCity) {
-      alert("Please select a valid city first")
-      return
-    }
-
-    try {
-      setStatusMessage("Checking email scraper status...")
-      setIsProcessing(true)
-
-      // Direct call to Flask API to check email scraper status
-      const dataUrl = `${FLASK_API_URL}/api/dataES?db_name=${encodeURIComponent(selectedCity.area_covered)}&collection=${encodeURIComponent(keyword || "restaurants")}`
-      console.log("Checking email scraper status with URL:", dataUrl)
-
-      const response = await fetch(dataUrl)
-
-      if (!response.ok) {
-        throw new Error(`Email scraper status check failed with status: ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log("Email scraper status response:", data)
-
-      // Store email scraper stats
-      setEmailScraperStats({
-        totalRecords: data.total_records,
-        pendingRecords: data.pending_scrape,
-        emailsFound: data.emails_found,
-        failedScrape: data.failed_scrape,
-      })
-
-      // Update status message with email scraper stats
-      setStatusMessage(
-        `Email scraper status: ${data.pending_scrape} pending, ${data.emails_found} emails found, ${data.failed_scrape} failed out of ${data.total_records} total records`,
-      )
-      setIsProcessing(false)
-    } catch (error) {
-      console.error("Error checking email scraper status:", error)
-      setStatusMessage(
-        `Error checking email scraper status: ${error instanceof Error ? error.message : "Unknown error"}`,
-      )
-      setIsProcessing(false)
-    }
-  }
-
-  // Start email scraping
-  const startEmailScraping = async () => {
-    if (!selectedCity) {
-      alert("Please select a valid city first")
-      return
-    }
-
-    try {
-      setStatusMessage("Starting email scraping...")
-      setIsProcessing(true)
-
-      // Direct call to Flask API to start email scraping
-      const scrapeUrl = `${FLASK_API_URL}/api/scrapeES?db_name=${encodeURIComponent(selectedCity.area_covered)}&collection=${encodeURIComponent(keyword || "restaurants")}`
-      console.log("Starting email scrape with URL:", scrapeUrl)
+      // Call the API with the parameters - always include auto_run_gmaps=true and run_es_auto=true
+      const scrapeUrl = `${FLASK_API_URL}/api/scrapePS?city=${encodeURIComponent(city)}&keyword=${encodeURIComponent(keyword)}&auto_run_gmaps=true&run_es_auto=true`
+      console.log("Starting scrape with URL:", scrapeUrl)
 
       const response = await fetch(scrapeUrl)
 
       if (!response.ok) {
-        throw new Error(`Email scrape initiation failed with status: ${response.status}`)
+        throw new Error(`Scrape initiation failed with status: ${response.status}`)
       }
 
       const data = await response.json()
-      console.log("Email scrape initiation response:", data)
+      console.log("Scrape initiation response:", data)
 
-      // Store task state and start polling
-      setTaskState({
-        taskId: data.task_id,
-        statusUrl: data.status_url,
-        status: "running",
-        progress: 0,
-        message: data.message || "Email scraping started",
-        totalRecords: data.pending_records,
-        pendingRecords: data.pending_records,
-        emailsFound: 0,
-        failedScrape: 0,
-      })
+      // Update UI with response data
+      setStatusMessage(`${data.message}`)
 
-      setStatusMessage(`Email scrape initiated: ${data.message}`)
-      setIsScraping(true)
-      setActiveScraperType(ScraperType.EMAIL)
-
-      // Start polling using the status URL from the response
-      startStatusPolling(data.status_url, ScraperType.EMAIL)
+      // Start polling for status updates if we have a status URL
+      if (data.gmaps_status_url) {
+        startStatusPolling(data.gmaps_status_url)
+      } else {
+        setIsLoading(false)
+      }
     } catch (error) {
-      console.error("Error initiating email scrape:", error)
-      setStatusMessage(`Error initiating email scrape: ${error instanceof Error ? error.message : "Unknown error"}`)
-      setIsScraping(false)
-      setIsProcessing(false)
+      console.error("Error starting scrape:", error)
+      setStatusMessage(`Error: ${error instanceof Error ? error.message : "Unknown error"}`)
+      setIsLoading(false)
     }
   }
 
-  // Update the handleStartClick function to always start the scraping process
-  const handleStartClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault()
+  // Function to poll for status updates
+  const startStatusPolling = (statusUrl: string) => {
+    // First get status immediately
+    fetchScraperStatus(statusUrl)
 
-    if (!selectedCity) {
-      alert("Please select a valid city from the dropdown")
-      return
-    }
+    // Then set up polling
+    const intervalId = setInterval(() => fetchScraperStatus(statusUrl), 5000)
+    setStatusPolling(intervalId)
+  }
 
-    setIsProcessing(true)
-    setStatusMessage("Checking database status...")
-
+  // Function to fetch scraper status
+  const fetchScraperStatus = async (statusUrl: string) => {
     try {
-      // Direct call to Flask API with auto_run_gmaps=true to start scraping immediately
-      const scrapeUrl = `${FLASK_API_URL}/api/scrapePS?city=${encodeURIComponent(selectedCity.area_covered)}&keyword=${encodeURIComponent(keyword || "restaurant")}&auto_run_gmaps=true`
-      console.log("Starting scrape with URL:", scrapeUrl)
+      const response = await fetch(`${FLASK_API_URL}${statusUrl}`)
 
-      const scrapeResponse = await fetch(scrapeUrl)
-
-      if (!scrapeResponse.ok) {
-        throw new Error(`Scrape initiation failed with status: ${scrapeResponse.status}`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch status: ${response.status}`)
       }
 
-      const scrapeData = await scrapeResponse.json()
-      console.log("Scrape initiation response:", scrapeData)
+      const data = await response.json()
+      console.log("Status update:", data)
 
-      // Handle different response statuses
-      if (scrapeData.status === "gmaps_started") {
-        // Google Maps scraping started
-        setTaskState({
-          taskId: scrapeData.gmaps_task_id,
-          statusUrl: scrapeData.gmaps_status_url,
-          status: "running",
-          progress: 0,
-          message: scrapeData.message || "Google Maps scraping started",
+      // Update progress information
+      if (data.total_subsectors && data.unprocessed_subsectors !== undefined) {
+        const processed = data.total_subsectors - data.unprocessed_subsectors
+        const percentage = Math.round((processed / data.total_subsectors) * 100)
+
+        setProgressInfo({
+          total: data.total_subsectors,
+          processed,
+          percentage,
         })
+      }
 
-        setStatusMessage(`Scrape initiated: ${scrapeData.message}`)
-        setIsScraping(true)
-        setActiveScraperType(ScraperType.GMAPS)
-
-        // Start polling using the status URL from the response
-        startStatusPolling(scrapeData.gmaps_status_url, ScraperType.GMAPS)
-      } else if (scrapeData.status === "exists") {
-        // Data exists but no scraping started
-        setStatusMessage(`${scrapeData.message}. Use auto_run_gmaps=true to start scraping.`)
-        setIsProcessing(false)
-      } else if (scrapeData.task_id) {
-        // Postcode scraping started
-        setTaskState({
-          taskId: scrapeData.task_id,
-          statusUrl: scrapeData.status_url || `/api/statusPS/${scrapeData.task_id}`,
-          status: "running",
-          progress: 0,
-          message: scrapeData.message || "Postcode scraping started",
-        })
-
-        setStatusMessage(`Scrape initiated: ${scrapeData.message}`)
-        setIsScraping(true)
-        setActiveScraperType(ScraperType.GMAPS)
-
-        // Start polling using the status URL from the response
-        startStatusPolling(scrapeData.status_url || `/api/statusPS/${scrapeData.task_id}`, ScraperType.GMAPS)
-      } else {
-        // Unknown status
-        setStatusMessage(`Scrape response: ${scrapeData.message || "Unknown status"}`)
-        setIsProcessing(false)
+      // Update status message based on status
+      if (data.status === "running") {
+        setStatusMessage(
+          `Scraping in progress: ${data.unprocessed_subsectors} subsectors remaining out of ${data.total_subsectors}`,
+        )
+      } else if (data.status === "completed") {
+        setStatusMessage("Scraping completed successfully!")
+        if (statusPolling) {
+          clearInterval(statusPolling)
+          setStatusPolling(null)
+        }
+        setIsLoading(false)
+      } else if (data.status === "error") {
+        setStatusMessage(`Error during scraping: ${data.message || "Unknown error"}`)
+        if (statusPolling) {
+          clearInterval(statusPolling)
+          setStatusPolling(null)
+        }
+        setIsLoading(false)
       }
     } catch (error) {
-      console.error("Error initiating scrape:", error)
-      setStatusMessage(`Error initiating scrape: ${error instanceof Error ? error.message : "Unknown error"}`)
-      setIsScraping(false)
-      setIsProcessing(false)
+      console.error("Error polling status:", error)
+      setStatusMessage(`Error checking status: ${error instanceof Error ? error.message : "Unknown error"}`)
+      if (statusPolling) {
+        clearInterval(statusPolling)
+        setStatusPolling(null)
+      }
+      setIsLoading(false)
     }
+  }
+
+  // Function to navigate to results page
+  const goToResults = () => {
+    router.push("/results")
   }
 
   // Close dropdown when clicking outside
@@ -661,7 +387,7 @@ export default function ScrapePage() {
               onChange={handleCityInputChange}
               ref={inputRef}
               autoComplete="off"
-              disabled={isProcessing}
+              disabled={isLoading}
             />
             {isSearching && <div className="search-loader"></div>}
 
@@ -685,12 +411,6 @@ export default function ScrapePage() {
                 )}
               </div>
             )}
-
-            {showDropdown && cityResults.length === 0 && !isSearching && city.trim().length >= 2 && (
-              <div className="city-dropdown" ref={dropdownRef}>
-                <div className="no-results">No cities found</div>
-              </div>
-            )}
           </div>
 
           {selectedCity && (
@@ -712,108 +432,39 @@ export default function ScrapePage() {
             placeholder="Enter keyword to search (e.g. restaurant, cafe)"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            disabled={isProcessing}
+            disabled={isLoading}
           />
         </div>
 
         <div className="button-container">
-          {!isScraping ? (
-            <>
-              <button className="btn btn-primary" disabled={!selectedCity || isProcessing} onClick={handleStartClick}>
-                {isProcessing ? "Processing..." : "Start GMaps Scraper"}
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={!selectedCity || isProcessing}
-                onClick={startEmailScraping}
-              >
-                Start Email Scraper
-              </button>
-              <button
-                className="btn btn-outline"
-                disabled={!selectedCity || isProcessing}
-                onClick={checkEmailScraperStatus}
-              >
-                Check Email Status
-              </button>
-            </>
-          ) : (
-            <button className="btn btn-danger" onClick={terminateScraping} disabled={!taskState?.taskId}>
-              Terminate {activeScraperType === ScraperType.GMAPS ? "GMaps" : "Email"} Scraping
-            </button>
-          )}
+          {/* Single Start Scrape Button */}
+          <button className="btn btn-primary" onClick={startScrape} disabled={isLoading}>
+            {isLoading ? "Scraping in Progress..." : "Start Scrape"}
+          </button>
 
-          {/* Only show this button when a scrape has been initiated or completed */}
-          {(isScraping || taskState?.status === "completed") && (
-            <button className="btn btn-outline" onClick={goToResults}>
-              Go to Results
-            </button>
-          )}
+          {/* Go to Results Button */}
+          <button className="btn btn-outline" onClick={goToResults}>
+            View Results
+          </button>
         </div>
 
-        {taskState?.taskId && (
-          <div className="task-info">
-            <span className="task-label">Active Task ID:</span>
-            <span className="task-value">{taskState.taskId}</span>
-          </div>
-        )}
-
-        {/* Show GMaps progress bar */}
-        {activeScraperType === ScraperType.GMAPS && taskState?.status === "running" && taskState.totalSubsectors && (
+        {/* Progress bar */}
+        {progressInfo && (
           <div className="progress-container">
             <div className="progress-label">
-              GMaps Progress: {taskState.progress}% (
-              {taskState.totalSubsectors - (taskState.unprocessedSubsectors || 0)}/{taskState.totalSubsectors}{" "}
-              subsectors)
+              Progress: {progressInfo.percentage}% ({progressInfo.processed}/{progressInfo.total} subsectors processed)
             </div>
             <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${taskState.progress}%` }}></div>
+              <div className="progress-fill" style={{ width: `${progressInfo.percentage}%` }}></div>
             </div>
           </div>
         )}
 
-        {/* Show Email progress bar */}
-        {activeScraperType === ScraperType.EMAIL && taskState?.status === "running" && taskState.totalRecords && (
-          <div className="progress-container">
-            <div className="progress-label">
-              Email Progress: {taskState.progress}% ({taskState.emailsFound} emails found, {taskState.pendingRecords}{" "}
-              pending, {taskState.failedScrape} failed)
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${taskState.progress}%` }}></div>
-            </div>
-          </div>
-        )}
-
-        {/* Show email scraper stats when available */}
-        {emailScraperStats && !isScraping && (
-          <div className="email-stats">
-            <h3>Email Scraper Statistics</h3>
-            <div className="stats-grid">
-              <div className="stat-item">
-                <span className="stat-label">Total Records:</span>
-                <span className="stat-value">{emailScraperStats.totalRecords}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Pending Records:</span>
-                <span className="stat-value">{emailScraperStats.pendingRecords}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Emails Found:</span>
-                <span className="stat-value">{emailScraperStats.emailsFound}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Failed Scrapes:</span>
-                <span className="stat-value">{emailScraperStats.failedScrape}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
+        {/* Status message */}
         {statusMessage && (
           <div className={`status-message ${statusMessage.includes("Error") ? "status-error" : ""}`}>
             {statusMessage}
-            {isScraping && <div className="status-loader"></div>}
+            {isLoading && <div className="status-loader"></div>}
           </div>
         )}
       </div>

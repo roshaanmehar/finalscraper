@@ -1,9 +1,7 @@
 "use client"
 
-import React from "react"
-
 import { useState } from "react"
-import { getCollectionData } from "../db-actions"
+import Link from "next/link"
 
 interface Pagination {
   total: number
@@ -20,10 +18,7 @@ interface DataTableProps {
 }
 
 export default function DataTable({ data, pagination, db, collection }: DataTableProps) {
-  const [currentData, setCurrentData] = useState(data)
-  const [currentPagination, setCurrentPagination] = useState(pagination)
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
 
   // Toggle row expansion
   const toggleRowExpansion = (id: string) => {
@@ -34,37 +29,27 @@ export default function DataTable({ data, pagination, db, collection }: DataTabl
     }
   }
 
-  // Handle page change
-  const handlePageChange = async (page: number) => {
-    try {
-      setIsLoading(true)
-      const result = await getCollectionData(db, collection, page, currentPagination.limit)
-      setCurrentData(result.data)
-      setCurrentPagination(result.pagination)
-    } catch (error) {
-      console.error("Error fetching page data:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   // Generate pagination links
   const generatePaginationLinks = () => {
+    // Ensure pagination object exists and has required properties
+    if (!pagination || typeof pagination.pages !== "number" || typeof pagination.currentPage !== "number") {
+      return null
+    }
+
     const links = []
-    const currentPage = currentPagination.currentPage
-    const totalPages = currentPagination.pages
+    const currentPage = pagination.currentPage
+    const totalPages = pagination.pages
 
     // Previous page link
     if (currentPage > 1) {
       links.push(
-        <button
+        <Link
           key="prev"
-          onClick={() => handlePageChange(currentPage - 1)}
+          href={`/results/data?db=${encodeURIComponent(db)}&collection=${encodeURIComponent(collection)}&page=${currentPage - 1}&limit=${pagination.limit || 20}`}
           className="pagination-link"
-          disabled={isLoading}
         >
           &laquo; Previous
-        </button>,
+        </Link>,
       )
     }
 
@@ -74,28 +59,26 @@ export default function DataTable({ data, pagination, db, collection }: DataTabl
 
     for (let i = startPage; i <= endPage; i++) {
       links.push(
-        <button
+        <Link
           key={i}
-          onClick={() => handlePageChange(i)}
+          href={`/results/data?db=${encodeURIComponent(db)}&collection=${encodeURIComponent(collection)}&page=${i}&limit=${pagination.limit || 20}`}
           className={`pagination-link ${i === currentPage ? "active" : ""}`}
-          disabled={isLoading || i === currentPage}
         >
           {i}
-        </button>,
+        </Link>,
       )
     }
 
     // Next page link
     if (currentPage < totalPages) {
       links.push(
-        <button
+        <Link
           key="next"
-          onClick={() => handlePageChange(currentPage + 1)}
+          href={`/results/data?db=${encodeURIComponent(db)}&collection=${encodeURIComponent(collection)}&page=${currentPage + 1}&limit=${pagination.limit || 20}`}
           className="pagination-link"
-          disabled={isLoading}
         >
           Next &raquo;
-        </button>,
+        </Link>,
       )
     }
 
@@ -103,7 +86,7 @@ export default function DataTable({ data, pagination, db, collection }: DataTabl
   }
 
   // If no data, show a message
-  if (currentData.length === 0) {
+  if (data.length === 0) {
     return (
       <div className="card">
         <h2>No Data Found</h2>
@@ -113,7 +96,7 @@ export default function DataTable({ data, pagination, db, collection }: DataTabl
   }
 
   // Get common fields from the first item to use as table headers
-  const firstItem = currentData[0]
+  const firstItem = data[0]
   const commonFields = Object.keys(firstItem)
     .filter(
       (key) =>
@@ -125,8 +108,9 @@ export default function DataTable({ data, pagination, db, collection }: DataTabl
   return (
     <div className="data-table-container">
       <div className="data-summary">
-        Showing {currentData.length} of {currentPagination.total} records (Page {currentPagination.currentPage} of{" "}
-        {currentPagination.pages})
+        {pagination && typeof pagination.total === "number"
+          ? `Showing ${data.length} of ${pagination.total} records (Page ${pagination.currentPage} of ${pagination.pages})`
+          : `Showing ${data.length} records`}
       </div>
 
       <div className="table-responsive">
@@ -141,12 +125,12 @@ export default function DataTable({ data, pagination, db, collection }: DataTabl
             </tr>
           </thead>
           <tbody>
-            {currentData.map((item) => (
-              <React.Fragment key={item._id}>
-                <tr>
+            {data.map((item) => (
+              <>
+                <tr key={item._id}>
                   <td>{item._id.substring(0, 8)}...</td>
                   {commonFields.map((field) => (
-                    <td key={`${item._id}-${field}`}>
+                    <td key={field}>
                       {typeof item[field] === "string" && item[field].length > 50
                         ? `${item[field].substring(0, 50)}...`
                         : String(item[field] || "")}
@@ -168,13 +152,13 @@ export default function DataTable({ data, pagination, db, collection }: DataTabl
                     </td>
                   </tr>
                 )}
-              </React.Fragment>
+              </>
             ))}
           </tbody>
         </table>
       </div>
 
-      {currentPagination.pages > 1 && <div className="pagination">{generatePaginationLinks()}</div>}
+      {pagination && pagination.pages > 1 && <div className="pagination">{generatePaginationLinks()}</div>}
     </div>
   )
 }

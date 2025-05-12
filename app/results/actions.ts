@@ -23,7 +23,9 @@ if (!process.env.MONGODB_URI) {
   // Instead of throwing an error, we'll continue with a mock setup
 }
 
-const uri = (process.env.MONGODB_URI as string) || "mongodb://localhost:27017"
+const uri =
+  (process.env.MONGODB_URI as string) ||
+  "mongodb+srv://roshaanatck:DOcnGUEEB37bQtcL@scraper-db-cluster.88kc14b.mongodb.net/?retryWrites=true&w=majority&appName=scraper-db-cluster"
 const options = {}
 
 let client

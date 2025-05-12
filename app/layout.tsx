@@ -2,8 +2,6 @@ import type React from "react"
 import type { Metadata } from "next"
 import Link from "next/link"
 import "./styles.css"
-import "./scraper-control/scraper-control.css"
-import "./cors-test/cors-test.css"
 
 export const metadata: Metadata = {
   title: "Restaurant Scraper",
@@ -35,16 +33,6 @@ export default function RootLayout({
               <li className="nav-item">
                 <Link href="/results" className="nav-link">
                   Results
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link href="/scraper-control" className="nav-link">
-                  Control Panel
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link href="/cors-test" className="nav-link">
-                  CORS Test
                 </Link>
               </li>
             </ul>

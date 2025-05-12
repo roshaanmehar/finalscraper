@@ -138,8 +138,15 @@ button:disabled {
 }
 
 /* Button styles */
+.button-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
 .btn {
-  display: inline-block;
   padding: 0.75rem 1.5rem;
   border: none;
   border-radius: 8px;
@@ -147,6 +154,9 @@ button:disabled {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.3s, transform 0.2s, box-shadow 0.2s;
+  min-width: 150px;
+  text-align: center;
+  border: 1px solid transparent;
 }
 
 .btn:hover:not(:disabled) {
@@ -156,6 +166,11 @@ button:disabled {
 
 .btn:active:not(:disabled) {
   transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-primary {
