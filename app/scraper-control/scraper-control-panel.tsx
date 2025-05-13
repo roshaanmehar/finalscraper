@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { UK_POSTCODE_AREAS } from "@/app/constants/uk-postcodes"
 import { ScraperStatus } from "./scraper-status"
 import { TaskLogs } from "./task-logs"
+import { FLASK_API_URL } from "@/app/constants/api-config"
 
 type ScraperTask = {
   taskId: string
@@ -21,7 +22,7 @@ type ScraperControlPanelProps = {
 }
 
 // Flask API base URL
-const FLASK_API_URL = "http://34.89.71.45:5000"
+// const FLASK_API_URL = "http://34.89.71.45:5000"
 
 export function ScraperControlPanel({ initialCity, initialKeyword }: ScraperControlPanelProps) {
   // State for city and keyword inputs

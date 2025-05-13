@@ -1,13 +1,24 @@
 import { MongoClient } from "mongodb"
+import "./env" // Import env to ensure .env is loaded
 
 if (!process.env.MONGODB_URI) {
   console.warn("MongoDB URI not found in environment variables. Using mock data for development.")
   // Instead of throwing an error, we'll continue with a mock setup
 }
 
+// Use the environment variable with fallback
 const uri =
   process.env.MONGODB_URI ||
   "mongodb+srv://roshaanatck:DOcnGUEEB37bQtcL@scraper-db-cluster.88kc14b.mongodb.net/?retryWrites=true&w=majority&appName=scraper-db-cluster"
+
+// Log the MongoDB connection status (with credentials hidden)
+console.log(
+  `MongoDB URI ${process.env.MONGODB_URI ? "found in environment variables" : "not found, using fallback URI"}`,
+)
+console.log(
+  `Connecting to MongoDB at: ${uri.substring(0, uri.indexOf("@") + 1)}[CREDENTIALS_HIDDEN]${uri.substring(uri.indexOf("@") + 1)}`,
+)
+
 const options = {}
 
 let client

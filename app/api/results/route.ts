@@ -1,6 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { MongoClient } from "mongodb"
 
+// Helper function to check if a website domain should be excluded
+function isExcludedDomain(website: string | undefined): boolean {
+  if (!website) return false
+
+  const excludedDomains = [
+    "wix.com",
+    "sentry.com",
+    "squarespace.com",
+    "weebly.com",
+    "wordpress.com",
+    "shopify.com",
+    "godaddy.com",
+    "webflow.com",
+    "jimdo.com",
+    "strikingly.com",
+  ]
+
+  const websiteLower = website.toLowerCase()
+  return excludedDomains.some((domain) => websiteLower.includes(domain))
+}
+
 // MongoDB connection setup
 if (!process.env.MONGODB_URI) {
   console.warn("MongoDB URI not found in environment variables. Using mock data for development.")
@@ -30,27 +51,7 @@ if (process.env.NODE_ENV === "development") {
   clientPromise = client.connect()
 }
 
-// Helper function to check if a restaurant has valid emails
-function hasValidEmail(restaurant: any): boolean {
-  // If email doesn't exist, return false
-  if (!restaurant.email) return false
-
-  // If email is an array, check if it has at least one non-N/A value
-  if (Array.isArray(restaurant.email)) {
-    return restaurant.email.some(
-      (email) => email && email !== "N/A" && email !== "n/a" && email.trim() !== "" && email.includes("@"),
-    )
-  }
-
-  // If email is a string, check if it's not N/A and is a valid format
-  return (
-    restaurant.email !== "N/A" &&
-    restaurant.email !== "n/a" &&
-    restaurant.email.trim() !== "" &&
-    restaurant.email.includes("@")
-  )
-}
-
+// Replace the entire GET function with this improved version
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -69,11 +70,53 @@ export async function GET(request: NextRequest) {
 
     try {
       const client = await clientPromise
+      console.log(`MongoDB client connected successfully`)
+
       const database = client.db(db)
 
-      // Create filter based on query
-      let filter: any = {}
+      // Check if collection exists
+      const collections = await database.listCollections({ name: collection }).toArray()
+      if (collections.length === 0) {
+        console.error(`Collection ${collection} not found in database ${db}`)
+        return NextResponse.json(
+          {
+            error: `Collection ${collection} not found in database ${db}`,
+            results: [],
+            pagination: { total: 0, pages: 0, currentPage: page, limit },
+          },
+          { status: 404 },
+        )
+      }
 
+      console.log(`Collection ${collection} found in database ${db}`)
+
+      // Create a base filter that ensures we only get documents with valid emails
+      // This is the key improvement - handle both string and array emails
+      const baseFilter = {
+        $or: [
+          // Case 1: Email is a string that's not N/A
+          {
+            email: {
+              $type: "string",
+              $ne: null,
+              $ne: "N/A",
+              $ne: "n/a",
+              $ne: "",
+              $regex: "@", // Must contain @ symbol
+            },
+          },
+          // Case 2: Email is an array with at least one element
+          {
+            email: {
+              $type: "array",
+              $ne: [],
+            },
+          },
+        ],
+      }
+
+      // Add search query if provided
+      let filter = baseFilter
       if (query) {
         // Try to convert query to number for phonenumber search
         let phoneQuery = null
@@ -82,18 +125,25 @@ export async function GET(request: NextRequest) {
         }
 
         filter = {
-          $or: [
-            { businessname: { $regex: query, $options: "i" } },
-            // Enhanced phone number search
+          $and: [
+            baseFilter,
             {
               $or: [
-                ...(phoneQuery !== null ? [{ phonenumber: phoneQuery }] : []),
-                { phonenumber: { $regex: query.replace(/[^0-9]/g, ""), $options: "i" } },
+                { businessname: { $regex: query, $options: "i" } },
+                // Enhanced phone number search
+                {
+                  $or: [
+                    ...(phoneQuery !== null ? [{ phonenumber: phoneQuery }] : []),
+                    { phonenumber: { $regex: query.replace(/[^0-9]/g, ""), $options: "i" } },
+                  ],
+                },
+                // Search in both string emails and array emails
+                { email: { $regex: query, $options: "i" } },
+                { "email.0": { $regex: query, $options: "i" } }, // Search in first element of email array
+                { subsector: { $regex: query, $options: "i" } },
+                { address: { $regex: query, $options: "i" } },
               ],
             },
-            { email: { $regex: query, $options: "i" } },
-            { subsector: { $regex: query, $options: "i" } },
-            { address: { $regex: query, $options: "i" } },
           ],
         }
       }
@@ -113,24 +163,59 @@ export async function GET(request: NextRequest) {
           break
       }
 
-      // Get total count
-      const totalCount = await database.collection(collection).countDocuments(filter)
+      // Get total count of documents matching our filter
+      let totalCount = 0
+      try {
+        totalCount = await database.collection(collection).countDocuments(filter)
+        console.log(`Found ${totalCount} total documents with valid emails matching filter in ${db}.${collection}`)
+      } catch (countError) {
+        console.error(`Error counting documents in ${db}.${collection}:`, countError)
+        totalCount = 0
+      }
 
       // Calculate pagination
       const skip = (page - 1) * limit
       const totalPages = Math.ceil(totalCount / limit)
 
-      // Get paginated results
-      const results = await database
-        .collection(collection)
-        .find(filter)
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(limit)
-        .toArray()
+      // Get paginated results with more detailed error handling
+      let results = []
+      try {
+        results = await database.collection(collection).find(filter).sort(sortOptions).skip(skip).limit(limit).toArray()
+        console.log(`Retrieved ${results.length} documents with valid emails from ${db}.${collection}`)
+      } catch (queryError) {
+        console.error(`Error querying documents from ${db}.${collection}:`, queryError)
+        results = []
+      }
+
+      // Log the raw results for debugging
+      if (results.length > 0) {
+        console.log(
+          `Raw results from ${db}.${collection} (first 2):`,
+          results.slice(0, 2).map((r) => ({
+            _id: r._id.toString(),
+            businessname: r.businessname,
+            email: r.email,
+          })),
+        )
+      } else {
+        console.log(`No results found with valid emails in ${db}.${collection}`)
+      }
+
+      // Post-process results to ensure emails are valid
+      const filteredResults = results.filter((item) => {
+        // For array emails, ensure at least one has an @ symbol
+        if (Array.isArray(item.email)) {
+          return item.email.some((email) => email && typeof email === "string" && email.includes("@"))
+        }
+
+        // For string emails, ensure it has an @ symbol
+        return item.email && typeof item.email === "string" && item.email.includes("@")
+      })
+
+      console.log(`After filtering, ${filteredResults.length} valid results remain`)
 
       // Convert MongoDB documents to plain objects
-      const serializedResults = results.map((item) => ({
+      const serializedResults = filteredResults.map((item) => ({
         ...item,
         _id: item._id.toString(),
         scraped_at: item.scraped_at ? new Date(item.scraped_at).toISOString() : null,
@@ -149,9 +234,11 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       console.error("Error connecting to MongoDB:", error)
 
-      // Return mock data for development if MongoDB connection fails
-      if (process.env.NODE_ENV === "development") {
-        return NextResponse.json({
+      // Return more detailed error information
+      return NextResponse.json(
+        {
+          error: "Failed to connect to MongoDB",
+          details: error instanceof Error ? error.message : "Unknown error",
           results: [],
           pagination: {
             total: 0,
@@ -159,13 +246,18 @@ export async function GET(request: NextRequest) {
             currentPage: page,
             limit,
           },
-        })
-      } else {
-        throw error // Re-throw in production
-      }
+        },
+        { status: 500 },
+      )
     }
   } catch (error) {
     console.error("Error fetching results:", error)
-    return NextResponse.json({ error: "Failed to fetch results" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: "Failed to fetch results",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

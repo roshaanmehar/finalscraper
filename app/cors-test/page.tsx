@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { FLASK_API_URL } from "@/app/constants/api-config"
 
 export default function CorsTestPage() {
   const [testResults, setTestResults] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [directTestResult, setDirectTestResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [flaskApiUrl, setFlaskApiUrl] = useState("http://127.0.0.1:5000")
+  const [flaskApiUrl, setFlaskApiUrl] = useState(FLASK_API_URL)
 
   // Run the CORS test through the Next.js API
   const runServerTest = async () => {
@@ -62,7 +63,7 @@ export default function CorsTestPage() {
 
   return (
     <div className="container">
-      <h1>CORS Test Utility</h1>
+      <h1>Veda Scraper - CORS Test Utility</h1>
 
       <div className="card">
         <h2>Test CORS Configuration</h2>

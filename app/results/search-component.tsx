@@ -6,6 +6,7 @@ import { useState, useCallback, useRef, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import type { Restaurant } from "./actions"
+import RestaurantCard from "./restaurant-card"
 
 type PaginationProps = {
   total: number
@@ -39,6 +40,14 @@ const COMMON_SEARCH_TERMS = [
   "bistro",
 ]
 
+// Add a function to validate email domains before displaying them
+const isValidEmailDomain = (email: string) => {
+  if (!email || !email.includes("@")) return false
+
+  // Basic check - just make sure it has @ and .
+  return email.includes(".")
+}
+
 export default function SearchComponent({ initialRestaurants, initialPagination, initialQuery }: SearchResultsProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -57,6 +66,14 @@ export default function SearchComponent({ initialRestaurants, initialPagination,
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Add state to track which restaurant card is expanded
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null)
+
+  // Function to toggle card expansion
+  const toggleCardExpand = (id: string) => {
+    setExpandedCardId(expandedCardId === id ? null : id)
+  }
 
   // Load search history from localStorage on component mount
   useEffect(() => {
@@ -194,6 +211,9 @@ export default function SearchComponent({ initialRestaurants, initialPagination,
 
         setRestaurants(data.restaurants)
         setPagination(data.pagination)
+
+        // Reset expanded card when new results are loaded
+        setExpandedCardId(null)
       } catch (error) {
         if (error instanceof Error && error.name !== "AbortError") {
           console.error("Error fetching search results:", error)
@@ -659,59 +679,12 @@ export default function SearchComponent({ initialRestaurants, initialPagination,
       <div className={`results-grid ${isLoading ? "loading-fade" : ""}`}>
         {restaurants.length > 0 ? (
           restaurants.map((restaurant) => (
-            <div className="result-card" key={restaurant._id}>
-              <h3 className="business-name">
-                {query ? highlightMatch(restaurant.businessname, query) : restaurant.businessname}
-              </h3>
-              <div className="business-details">
-                <div className="detail-item">
-                  <span className="detail-label">Email:</span>
-                  <div className="email-list">
-                    {Array.isArray(restaurant.email) ? (
-                      restaurant.email
-                        .filter((email) => email && email !== "N/A" && email !== "n/a" && email.trim() !== "")
-                        .map((email, index) => (
-                          <span key={index} className="detail-value">
-                            {query && email.includes("@") ? highlightMatch(email, query) : email}
-                          </span>
-                        ))
-                    ) : (
-                      <span className="detail-value">
-                        {query && restaurant.email && restaurant.email.includes("@")
-                          ? highlightMatch(restaurant.email, query)
-                          : restaurant.email}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Phone:</span>
-                  <span className="detail-value">
-                    {restaurant.phonenumber
-                      ? query
-                        ? highlightPhoneMatch(restaurant.phonenumber, query)
-                        : restaurant.phonenumber
-                      : "No phone available"}
-                  </span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Website:</span>
-                  {restaurant.website ? (
-                    <a href={restaurant.website} target="_blank" rel="noopener noreferrer" className="website-link">
-                      Visit Website
-                    </a>
-                  ) : (
-                    <span className="detail-value no-data">No website available</span>
-                  )}
-                </div>
-                {restaurant.numberofreviews && (
-                  <div className="detail-item">
-                    <span className="detail-label">Reviews:</span>
-                    <span className="detail-value">{restaurant.numberofreviews} reviews</span>
-                  </div>
-                )}
-              </div>
-            </div>
+            <RestaurantCard
+              key={restaurant._id}
+              restaurant={restaurant}
+              isExpanded={expandedCardId === restaurant._id}
+              onToggleExpand={toggleCardExpand}
+            />
           ))
         ) : (
           <div className="no-results">

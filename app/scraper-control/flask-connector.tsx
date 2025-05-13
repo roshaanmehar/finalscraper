@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { FLASK_API_URL } from "@/app/constants/api-config"
 
 type FlaskConnectionStatus = "checking" | "connected" | "disconnected"
 
 // Flask API base URL - changed to the specified IP address
-const FLASK_API_URL = "http://34.89.71.45:5000"
+// const FLASK_API_URL = "http://34.89.71.45:5000"
 
 export function FlaskConnector() {
   const [status, setStatus] = useState<FlaskConnectionStatus>("checking")

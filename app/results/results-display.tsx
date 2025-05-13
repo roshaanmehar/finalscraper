@@ -26,6 +26,7 @@ export default function ResultsDisplay({ initialCity = "Leeds", initialKeyword =
   const [sortBy, setSortBy] = useState<string>("recent")
   const [searchQuery, setSearchQuery] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [exportLoading, setExportLoading] = useState(false)
   const resultsPerPage = 20
   const router = useRouter()
 
@@ -167,10 +168,18 @@ export default function ResultsDisplay({ initialCity = "Leeds", initialKeyword =
       const response = await fetch(url)
 
       if (!response.ok) {
-        throw new Error(`Error fetching results: ${response.statusText}`)
+        const errorData = await response.json()
+        throw new Error(`Error fetching results: ${errorData.error || response.statusText}`)
       }
 
+      // Parse the response as JSON
       const data = await response.json()
+
+      // Log the received data for debugging
+      console.log(`Received ${data.results?.length || 0} results from API`)
+      if (data.results?.length > 0) {
+        console.log("First result:", data.results[0])
+      }
 
       setResults(data.results || [])
       setTotalResults(data.pagination?.total || 0)
@@ -178,7 +187,7 @@ export default function ResultsDisplay({ initialCity = "Leeds", initialKeyword =
       setCurrentPage(data.pagination?.currentPage || 1)
     } catch (error) {
       console.error("Error fetching results:", error)
-      setError("Failed to fetch results. Please try again later.")
+      setError(`Failed to fetch results: ${error instanceof Error ? error.message : "Unknown error"}`)
       setResults([])
       setTotalResults(0)
       setTotalPages(1)
@@ -187,14 +196,141 @@ export default function ResultsDisplay({ initialCity = "Leeds", initialKeyword =
     }
   }
 
-  // Handle export button click
-  const handleExport = () => {
-    if (selectedDb && selectedCollection) {
-      const queryParam = searchQuery ? `&query=${encodeURIComponent(searchQuery)}` : ""
-      window.open(
-        `/api/search/export?db=${selectedDb}&collection=${selectedCollection}&sort=${sortBy}${queryParam}`,
-        "_blank",
+  // Fetch all results for export (across all pages)
+  const fetchAllResultsForExport = async () => {
+    try {
+      setExportLoading(true)
+      setError(null)
+
+      // Build the API URL - use a higher limit to get all results in fewer requests
+      let url = `/api/results?db=${encodeURIComponent(selectedDb)}&collection=${encodeURIComponent(
+        selectedCollection,
+      )}&page=1&limit=1000&sort=${sortBy}`
+
+      if (searchQuery) {
+        url += `&query=${encodeURIComponent(searchQuery)}`
+      }
+
+      console.log(`Fetching all results for export from: ${url}`)
+      const response = await fetch(url)
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(`Error fetching results for export: ${errorData.error || response.statusText}`)
+      }
+
+      // Parse the response as JSON
+      const data = await response.json()
+      console.log(`Received ${data.results?.length || 0} results for export`)
+
+      return data.results || []
+    } catch (error) {
+      console.error("Error fetching all results for export:", error)
+      setError(`Failed to export: ${error instanceof Error ? error.message : "Unknown error"}`)
+      return []
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  // Convert a single restaurant to CSV row
+  const restaurantToCsvRow = (restaurant: Restaurant): string => {
+    // Define the fields to include in the CSV
+    const fields = [
+      restaurant.businessname || "",
+      formatEmails(restaurant.email),
+      restaurant.phonenumber || "",
+      restaurant.address || "",
+      restaurant.website || "",
+      restaurant.stars || "",
+      restaurant.numberofreviews || "",
+      restaurant.subsector || "",
+    ]
+
+    // Escape fields for CSV format
+    return fields.map(escapeCSVField).join(",")
+  }
+
+  // Format emails for CSV (handle array or string)
+  const formatEmails = (emails: string | string[] | undefined): string => {
+    if (!emails) return ""
+    if (Array.isArray(emails)) {
+      return emails.filter((email) => email && email !== "N/A" && email !== "n/a").join("; ")
+    }
+    return emails
+  }
+
+  // Escape a field for CSV format
+  const escapeCSVField = (field: any): string => {
+    const stringField = String(field || "")
+    // If field contains comma, quote, or newline, wrap in quotes and escape quotes
+    if (stringField.includes(",") || stringField.includes('"') || stringField.includes("\n")) {
+      return `"${stringField.replace(/"/g, '""')}"`
+    }
+    return stringField
+  }
+
+  // Handle export button click - export current results to CSV
+  const handleExport = async () => {
+    if (!selectedDb || !selectedCollection) {
+      setError("Please select a database and collection first.")
+      return
+    }
+
+    try {
+      setExportLoading(true)
+
+      // Get all results for the current query
+      const allResults = await fetchAllResultsForExport()
+
+      if (allResults.length === 0) {
+        setError("No results to export.")
+        return
+      }
+
+      // Create CSV header
+      const headers = [
+        "Business Name",
+        "Email",
+        "Phone Number",
+        "Address",
+        "Website",
+        "Rating",
+        "Number of Reviews",
+        "Category",
+      ]
+
+      // Create CSV content
+      const csvContent = [headers.join(","), ...allResults.map((restaurant) => restaurantToCsvRow(restaurant))].join(
+        "\n",
       )
+
+      // Create a Blob with the CSV content
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+
+      // Create a download link
+      const link = document.createElement("a")
+      const url = URL.createObjectURL(blob)
+
+      // Set link attributes
+      link.setAttribute("href", url)
+      link.setAttribute(
+        "download",
+        `${selectedDb}-${selectedCollection}-export-${new Date().toISOString().slice(0, 10)}.csv`,
+      )
+      link.style.visibility = "hidden"
+
+      // Add link to document, click it, and remove it
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      console.log(`Exported ${allResults.length} results to CSV`)
+    } catch (error) {
+      console.error("Error exporting to CSV:", error)
+      setError(`Failed to export: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setExportLoading(false)
     }
   }
 
@@ -308,8 +444,13 @@ export default function ResultsDisplay({ initialCity = "Leeds", initialKeyword =
             </select>
           </div>
 
-          <button className="export-btn" onClick={handleExport} disabled={!selectedDb || !selectedCollection}>
+          <button
+            className="export-btn"
+            onClick={handleExport}
+            disabled={loading || !selectedDb || !selectedCollection}
+          >
             Export
+            {exportLoading && <span className="export-loading-indicator"> ...</span>}
           </button>
         </div>
       </div>

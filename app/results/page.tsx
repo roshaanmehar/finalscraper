@@ -19,7 +19,7 @@ export default async function ResultsPage({
 
   return (
     <div className="container">
-      <h1>Search Results</h1>
+      <h1>Veda Scraper Results</h1>
 
       <Suspense fallback={<div className="loading-container">Loading results...</div>}>
         <ResultsDisplay initialCity={city} initialKeyword={keyword} />

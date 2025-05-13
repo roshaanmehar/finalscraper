@@ -4,7 +4,7 @@ import Link from "next/link"
 import "./styles.css"
 
 export const metadata: Metadata = {
-  title: "Restaurant Scraper",
+  title: "Veda Scraper",
   description: "A simple restaurant scraper application",
 }
 
@@ -23,7 +23,7 @@ export default function RootLayout({
       <body>
         <nav className="navbar">
           <div className="nav-container">
-            <div className="logo">Restaurant Scraper</div>
+            <div className="logo">Veda Scraper</div>
             <ul className="nav-menu">
               <li className="nav-item">
                 <Link href="/" className="nav-link">

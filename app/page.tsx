@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import type { City } from "./types"
+import { FLASK_API_URL } from "./constants/api-config"
 
 // Add the UK postcode areas dictionary at the top of the component
 const UK_POSTCODE_AREAS = {
@@ -133,7 +134,7 @@ const UK_POSTCODE_AREAS = {
 }
 
 // Flask API base URL - changed to the specified IP address
-const FLASK_API_URL = "http://34.89.71.45:5000"
+// const FLASK_API_URL = "http://34.89.71.45:5000"
 
 export default function ScrapePage() {
   const router = useRouter()
@@ -153,6 +154,15 @@ export default function ScrapePage() {
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Add additional state for tracking email scraping status
+  const [emailScrapingStarted, setEmailScrapingStarted] = useState(false)
+  const [emailStatusUrl, setEmailStatusUrl] = useState<string | null>(null)
+  const [emailProgress, setEmailProgress] = useState<{
+    total: number
+    processed: number
+    percentage: number
+  } | null>(null)
 
   // Clean up polling on unmount
   useEffect(() => {
@@ -214,6 +224,7 @@ export default function ScrapePage() {
             _id: code,
             postcode_area: code,
             area_covered: cityName,
+            area_covered: cityName,
             population_2011: 0,
             households_2011: 0,
             postcodes: 0,
@@ -251,13 +262,21 @@ export default function ScrapePage() {
   const startScrape = async () => {
     setIsLoading(true)
     setStatusMessage("Starting scrape process...")
+    setProgressInfo(null) // Reset progress info
 
     try {
       // Call the API with the parameters - always include auto_run_gmaps=true and run_es_auto=true
       const scrapeUrl = `${FLASK_API_URL}/api/scrapePS?city=${encodeURIComponent(city)}&keyword=${encodeURIComponent(keyword)}&auto_run_gmaps=true&run_es_auto=true`
       console.log("Starting scrape with URL:", scrapeUrl)
 
-      const response = await fetch(scrapeUrl)
+      // Add mode: 'cors' to the fetch request
+      const response = await fetch(scrapeUrl, {
+        method: "GET",
+        mode: "cors",
+        headers: {
+          Accept: "application/json",
+        },
+      })
 
       if (!response.ok) {
         throw new Error(`Scrape initiation failed with status: ${response.status}`)
@@ -267,12 +286,25 @@ export default function ScrapePage() {
       console.log("Scrape initiation response:", data)
 
       // Update UI with response data
-      setStatusMessage(`${data.message}`)
+      setStatusMessage(data.message || "Scrape initiated")
+
+      // Initialize progress info if we have a count
+      if (data.count) {
+        setProgressInfo({
+          total: data.count,
+          processed: 0,
+          percentage: 0,
+        })
+      }
 
       // Start polling for status updates if we have a status URL
       if (data.gmaps_status_url) {
         startStatusPolling(data.gmaps_status_url)
+      } else if (data.status_url) {
+        startStatusPolling(data.status_url)
       } else {
+        // If no status URL, we can't poll for updates
+        setStatusMessage("Scrape initiated, but no status URL provided for updates")
         setIsLoading(false)
       }
     } catch (error) {
@@ -284,66 +316,135 @@ export default function ScrapePage() {
 
   // Function to poll for status updates
   const startStatusPolling = (statusUrl: string) => {
+    // Clear any existing polling interval
+    if (statusPolling) {
+      clearInterval(statusPolling)
+    }
+
     // First get status immediately
     fetchScraperStatus(statusUrl)
 
-    // Then set up polling
+    // Then set up polling with a reasonable interval
     const intervalId = setInterval(() => fetchScraperStatus(statusUrl), 5000)
     setStatusPolling(intervalId)
   }
 
-  // Function to fetch scraper status
-  const fetchScraperStatus = async (statusUrl: string) => {
+  // Update the fetchScraperStatus function to handle email scraping status
+  const fetchScraperStatus = async (statusUrl: string, isEmailStatus = false) => {
     try {
-      const response = await fetch(`${FLASK_API_URL}${statusUrl}`)
+      // Check if the statusUrl is a full URL or just a path
+      const fullUrl = statusUrl.startsWith("http") ? statusUrl : `${FLASK_API_URL}${statusUrl}`
+
+      console.log(`Fetching ${isEmailStatus ? "email" : "gmaps"} status from:`, fullUrl)
+
+      // Add mode: 'cors' to the fetch request
+      const response = await fetch(fullUrl, {
+        method: "GET",
+        mode: "cors",
+        headers: {
+          Accept: "application/json",
+        },
+      })
 
       if (!response.ok) {
         throw new Error(`Failed to fetch status: ${response.status}`)
       }
 
       const data = await response.json()
-      console.log("Status update:", data)
+      console.log(`${isEmailStatus ? "Email" : "GMaps"} status update:`, data)
 
-      // Update progress information
-      if (data.total_subsectors && data.unprocessed_subsectors !== undefined) {
-        const processed = data.total_subsectors - data.unprocessed_subsectors
-        const percentage = Math.round((processed / data.total_subsectors) * 100)
+      if (isEmailStatus) {
+        // Handle email scraping status
+        if (data.total && data.processed !== undefined) {
+          const percentage = Math.round((data.processed / data.total) * 100)
 
-        setProgressInfo({
-          total: data.total_subsectors,
-          processed,
-          percentage,
-        })
-      }
-
-      // Update status message based on status
-      if (data.status === "running") {
-        setStatusMessage(
-          `Scraping in progress: ${data.unprocessed_subsectors} subsectors remaining out of ${data.total_subsectors}`,
-        )
-      } else if (data.status === "completed") {
-        setStatusMessage("Scraping completed successfully!")
-        if (statusPolling) {
-          clearInterval(statusPolling)
-          setStatusPolling(null)
+          setEmailProgress({
+            total: data.total,
+            processed: data.processed,
+            percentage,
+          })
         }
-        setIsLoading(false)
-      } else if (data.status === "error") {
-        setStatusMessage(`Error during scraping: ${data.message || "Unknown error"}`)
-        if (statusPolling) {
-          clearInterval(statusPolling)
-          setStatusPolling(null)
+
+        if (data.status === "completed") {
+          setStatusMessage("Email scraping completed successfully!")
+          setEmailScrapingStarted(false)
+        } else if (data.status === "failed" || data.status === "error") {
+          setStatusMessage(`Email scraping failed: ${data.message || "Unknown error"}`)
+          setEmailScrapingStarted(false)
+        } else {
+          // Continue polling for email status
+          setTimeout(() => fetchScraperStatus(statusUrl, true), 5000)
         }
-        setIsLoading(false)
+      } else {
+        // Handle GMaps scraping status
+        if (data.total_subsectors && data.unprocessed_subsectors !== undefined) {
+          const processed = data.total_subsectors - data.unprocessed_subsectors
+          const percentage = Math.round((processed / data.total_subsectors) * 100)
+
+          setProgressInfo({
+            total: data.total_subsectors,
+            processed,
+            percentage,
+          })
+        } else if (data.count) {
+          // If we have a count but not subsector info, use that for progress
+          const processed = data.processed_count || 0
+          const percentage = Math.round((processed / data.count) * 100)
+
+          setProgressInfo({
+            total: data.count,
+            processed,
+            percentage,
+          })
+        }
+
+        // Update status message based on status
+        if (data.status === "running") {
+          if (data.unprocessed_subsectors !== undefined) {
+            setStatusMessage(
+              `Scraping in progress: ${data.unprocessed_subsectors} subsectors remaining out of ${data.total_subsectors}`,
+            )
+          } else if (data.count) {
+            setStatusMessage(`Scraping in progress: ${data.processed_count || 0} of ${data.count} items processed`)
+          } else {
+            setStatusMessage("Scraping in progress...")
+          }
+        } else if (data.status === "completed") {
+          setStatusMessage("Scraping completed successfully!")
+
+          // Check if email scraping has started
+          if (data.email_scraping_started && data.email_status_url) {
+            setEmailScrapingStarted(true)
+            setEmailStatusUrl(data.email_status_url)
+            setStatusMessage("Google Maps scraping completed. Email scraping started automatically.")
+
+            // Start polling for email status
+            fetchScraperStatus(data.email_status_url, true)
+          } else {
+            if (statusPolling) {
+              clearInterval(statusPolling)
+              setStatusPolling(null)
+            }
+            setIsLoading(false)
+          }
+        } else if (data.status === "failed" || data.status === "error") {
+          setStatusMessage(`Scraping failed: ${data.message || "Unknown error"}`)
+          if (statusPolling) {
+            clearInterval(statusPolling)
+            setStatusPolling(null)
+          }
+          setIsLoading(false)
+        } else {
+          setStatusMessage(`Status: ${data.status}`)
+          // Continue polling for other statuses
+          setTimeout(() => fetchScraperStatus(statusUrl), 5000)
+        }
       }
     } catch (error) {
-      console.error("Error polling status:", error)
+      console.error(`Error polling ${isEmailStatus ? "email" : "gmaps"} status:`, error)
       setStatusMessage(`Error checking status: ${error instanceof Error ? error.message : "Unknown error"}`)
-      if (statusPolling) {
-        clearInterval(statusPolling)
-        setStatusPolling(null)
-      }
-      setIsLoading(false)
+      // Continue polling despite errors, but with a longer delay
+      setTimeout(() => fetchScraperStatus(statusUrl, isEmailStatus), 10000)
     }
   }
 
@@ -371,9 +472,10 @@ export default function ScrapePage() {
     }
   }, [])
 
+  // Update the UI to show both GMaps and Email scraping progress
   return (
     <div className="container">
-      <h1>Restaurant Scraper</h1>
+      <h1>Veda Scraper</h1>
       <div className="card">
         <div className="form-group">
           <label htmlFor="city">City</label>
@@ -448,14 +550,36 @@ export default function ScrapePage() {
           </button>
         </div>
 
-        {/* Progress bar */}
+        {/* Google Maps Progress bar */}
         {progressInfo && (
-          <div className="progress-container">
-            <div className="progress-label">
-              Progress: {progressInfo.percentage}% ({progressInfo.processed}/{progressInfo.total} subsectors processed)
+          <div className="progress-section">
+            <h3 className="progress-title">Google Maps Scraping</h3>
+            <div className="progress-container">
+              <div className="progress-label">
+                Progress: {progressInfo.percentage}% ({progressInfo.processed}/{progressInfo.total} subsectors
+                processed)
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${progressInfo.percentage}%` }}></div>
+              </div>
             </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progressInfo.percentage}%` }}></div>
+          </div>
+        )}
+
+        {/* Email Scraping Progress bar */}
+        {emailProgress && (
+          <div className="progress-section">
+            <h3 className="progress-title">Email Scraping</h3>
+            <div className="progress-container">
+              <div className="progress-label">
+                Progress: {emailProgress.percentage}% ({emailProgress.processed}/{emailProgress.total} items processed)
+              </div>
+              <div className="progress-bar">
+                <div
+                  className="progress-fill email-progress-fill"
+                  style={{ width: `${emailProgress.percentage}%` }}
+                ></div>
+              </div>
             </div>
           </div>
         )}

@@ -1,0 +1,111 @@
+.test-result {
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 4px solid;
+}
+
+.test-result.success {
+  background-color: #f0fff4;
+  border-left-color: #38a169;
+}
+
+.test-result.error {
+  background-color: #fff5f5;
+  border-left-color: #e53e3e;
+}
+
+.result-status,
+.result-message {
+  margin-bottom: 10px;
+}
+
+.databases {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #f7fafc;
+  border-radius: 6px;
+}
+
+.databases h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.databases ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.environment-status {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #f7fafc;
+  border-radius: 6px;
+}
+
+.environment-status h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.env-item {
+  margin-bottom: 5px;
+}
+
+.error-details {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #fff5f5;
+  border-radius: 6px;
+}
+
+.error-details h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1rem;
+  color: #e53e3e;
+}
+
+.error-details pre {
+  background-color: #fed7d7;
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  color: #c53030;
+}
+
+.code-block {
+  background-color: #2d3748;
+  color: #e2e8f0;
+  padding: 15px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  margin: 10px 0;
+}
+
+.setup-guide h3 {
+  margin-top: 20px;
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+}
+
+.setup-guide code {
+  background-color: #f0f0f0;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.button-container {
+  margin-top: 20px;
+}
+
+.navigation {
+  margin-top: 30px;
+  text-align: center;
+}

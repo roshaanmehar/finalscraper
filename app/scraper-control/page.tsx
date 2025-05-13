@@ -13,7 +13,7 @@ export default function ScraperControlPage() {
 
   return (
     <div className="container">
-      <h1>Scraper Control Panel</h1>
+      <h1>Veda Scraper Control Panel</h1>
       <ScraperControlPanel initialCity={cityParam} initialKeyword={keywordParam} />
 
       <div className="navigation-buttons">

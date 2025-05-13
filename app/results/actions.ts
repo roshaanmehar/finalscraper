@@ -49,27 +49,99 @@ if (process.env.NODE_ENV === "development") {
   clientPromise = client.connect()
 }
 
-// Helper function to check if a restaurant has valid emails
-function hasValidEmail(restaurant: any): boolean {
-  // If email doesn't exist, return false
-  if (!restaurant.email) return false
+// Helper function to check if a website domain should be excluded
+function isExcludedDomain(website: string | undefined): boolean {
+  if (!website) return false
 
-  // If email is an array, check if it has at least one non-N/A value
-  if (Array.isArray(restaurant.email)) {
-    return restaurant.email.some(
-      (email) => email && email !== "N/A" && email !== "n/a" && email.trim() !== "" && email.includes("@"),
-    )
-  }
+  const excludedDomains = [
+    "wix.com",
+    "sentry.com",
+    "squarespace.com",
+    "weebly.com",
+    "wordpress.com",
+    "shopify.com",
+    "godaddy.com",
+    "webflow.com",
+    "jimdo.com",
+    "strikingly.com",
+  ]
 
-  // If email is a string, check if it's not N/A and is a valid format
-  return (
-    restaurant.email !== "N/A" &&
-    restaurant.email !== "n/a" &&
-    restaurant.email.trim() !== "" &&
-    restaurant.email.includes("@")
-  )
+  const websiteLower = website.toLowerCase()
+  return excludedDomains.some((domain) => websiteLower.includes(domain))
 }
 
+// Update the hasValidEmail function to be less strict and provide better debugging
+function hasValidEmail(restaurant: any): boolean {
+  // If email doesn't exist, return false
+  if (!restaurant.email) {
+    console.log(`Restaurant ${restaurant.businessname}: No email found`)
+    return false
+  }
+
+  // Function to check if an email is valid with detailed logging
+  const isValidEmailFormat = (email: string) => {
+    // Basic email format validation
+    if (!email || email === "N/A" || email === "n/a" || email.trim() === "") {
+      console.log(`Email "${email}" rejected: Empty or N/A`)
+      return false
+    }
+
+    // Check for @ and . characters
+    if (!email.includes("@") || !email.includes(".")) {
+      console.log(`Email "${email}" rejected: Missing @ or .`)
+      return false
+    }
+
+    // Check for excluded domains - less strict now
+    const excludedDomains = ["sentry", "wixpress"] // Removed "wix" as it might be legitimate
+    const lowerEmail = email.toLowerCase()
+    if (excludedDomains.some((domain) => lowerEmail.includes(domain))) {
+      console.log(`Email "${email}" rejected: Contains excluded domain`)
+      return false
+    }
+
+    // Accept all emails with @ and . that aren't excluded
+    return true
+  }
+
+  // If email is an array, check if it has at least one valid email
+  if (Array.isArray(restaurant.email)) {
+    const validEmails = restaurant.email.filter(isValidEmailFormat)
+    if (validEmails.length === 0) {
+      console.log(`Restaurant ${restaurant.businessname}: No valid emails in array [${restaurant.email.join(", ")}]`)
+    } else {
+      console.log(`Restaurant ${restaurant.businessname}: Found ${validEmails.length} valid emails`)
+    }
+    return validEmails.length > 0
+  }
+
+  // If email is a string, check if it's valid
+  const isValid = isValidEmailFormat(restaurant.email)
+  console.log(`Restaurant ${restaurant.businessname}: Email "${restaurant.email}" is ${isValid ? "valid" : "invalid"}`)
+  return isValid
+}
+
+// Update the hasValidPhoneNumber function to require at least 10 digits:
+function hasValidPhoneNumber(restaurant: any): boolean {
+  if (!restaurant.phonenumber) {
+    console.log(`Restaurant ${restaurant.businessname}: No phone number found`)
+    return false
+  }
+
+  // Convert to string and remove non-digit characters
+  const phoneStr = String(restaurant.phonenumber).replace(/\D/g, "")
+
+  // Accept phone numbers with at least 10 digits (stricter validation)
+  const isValid = phoneStr.length >= 10
+  if (!isValid) {
+    console.log(
+      `Restaurant ${restaurant.businessname}: Phone number "${restaurant.phonenumber}" is too short (less than 10 digits)`,
+    )
+  }
+  return isValid
+}
+
+// Update the getRestaurants function to filter by valid phone numbers
 export async function getRestaurants(page = 1, limit = 8) {
   try {
     console.log("Connecting to MongoDB...")
@@ -87,6 +159,7 @@ export async function getRestaurants(page = 1, limit = 8) {
         $ne: "N/A",
         $ne: "n/a",
       },
+      phonenumber: { $exists: true },
     }
 
     // Calculate skip value for pagination
@@ -97,15 +170,18 @@ export async function getRestaurants(page = 1, limit = 8) {
     // Get all restaurants first to filter them properly
     const allRestaurants = await db.collection("restaurants").find(filter).sort({ scraped_at: -1 }).toArray()
 
-    // Filter restaurants with valid emails
-    const validEmailRestaurants = allRestaurants.filter(hasValidEmail)
+    // Filter restaurants with valid emails, valid phone numbers, and exclude unwanted domains
+    const validRestaurants = allRestaurants.filter(
+      (restaurant) =>
+        hasValidEmail(restaurant) && hasValidPhoneNumber(restaurant) && !isExcludedDomain(restaurant.website),
+    )
 
     // Get total count for pagination
-    const totalCount = validEmailRestaurants.length
-    console.log(`Total restaurants with valid emails: ${totalCount}`)
+    const totalCount = validRestaurants.length
+    console.log(`Total restaurants with valid emails and phone numbers: ${totalCount}`)
 
     // Apply pagination manually
-    const paginatedRestaurants = validEmailRestaurants.slice(skip, skip + limit)
+    const paginatedRestaurants = validRestaurants.slice(skip, skip + limit)
 
     console.log(`Fetched ${paginatedRestaurants.length} restaurants from MongoDB`)
 
@@ -140,11 +216,61 @@ export async function getRestaurants(page = 1, limit = 8) {
   }
 }
 
+// Update the searchRestaurants function to filter by valid phone numbers
 export async function searchRestaurants(query: string, page = 1, limit = 8) {
   try {
     console.log(`Searching for "${query}" in MongoDB...`)
     const client = await clientPromise
+
+    // Check if we can connect to MongoDB
+    if (!client) {
+      console.error("Failed to connect to MongoDB client")
+      return {
+        restaurants: [],
+        pagination: {
+          total: 0,
+          pages: 0,
+          currentPage: page,
+          limit,
+        },
+      }
+    }
+
     const db = client.db("Leeds") // Database name specified here
+
+    // Check if the database exists
+    try {
+      await db.command({ ping: 1 })
+      console.log("Successfully connected to the Leeds database")
+    } catch (dbError) {
+      console.error("Error connecting to Leeds database:", dbError)
+      return {
+        restaurants: [],
+        pagination: {
+          total: 0,
+          pages: 0,
+          currentPage: page,
+          limit,
+        },
+      }
+    }
+
+    // Check if the restaurants collection exists
+    const collections = await db.listCollections({ name: "restaurants" }).toArray()
+    if (collections.length === 0) {
+      console.error("Restaurants collection not found in Leeds database")
+      return {
+        restaurants: [],
+        pagination: {
+          total: 0,
+          pages: 0,
+          currentPage: page,
+          limit,
+        },
+      }
+    }
+
+    console.log("Restaurants collection found in Leeds database")
 
     // Try to convert query to number for phonenumber search
     let phoneQuery = null
@@ -164,6 +290,7 @@ export async function searchRestaurants(query: string, page = 1, limit = 8) {
             $ne: "N/A",
             $ne: "n/a",
           },
+          phonenumber: { $exists: true },
         },
         {
           $or: [
@@ -198,20 +325,49 @@ export async function searchRestaurants(query: string, page = 1, limit = 8) {
     console.log("Search filter:", JSON.stringify(filter))
 
     // Get all matching restaurants first to filter them properly
-    const allMatchingRestaurants = await db.collection("restaurants").find(filter).sort({ scraped_at: -1 }).toArray()
+    let allMatchingRestaurants = []
+    try {
+      allMatchingRestaurants = await db.collection("restaurants").find(filter).sort({ scraped_at: -1 }).toArray()
+      console.log(`Found ${allMatchingRestaurants.length} matching restaurants in initial query`)
+    } catch (queryError) {
+      console.error("Error querying restaurants:", queryError)
+      return {
+        restaurants: [],
+        pagination: {
+          total: 0,
+          pages: 0,
+          currentPage: page,
+          limit,
+        },
+      }
+    }
 
-    // Filter restaurants with valid emails
-    const validEmailRestaurants = allMatchingRestaurants.filter(hasValidEmail)
+    // Log a sample of the raw results for debugging
+    if (allMatchingRestaurants.length > 0) {
+      console.log("Sample raw restaurant data:", {
+        _id: allMatchingRestaurants[0]._id.toString(),
+        businessname: allMatchingRestaurants[0].businessname,
+        email: allMatchingRestaurants[0].email,
+        phonenumber: allMatchingRestaurants[0].phonenumber,
+      })
+    }
+
+    // Filter restaurants with valid emails, valid phone numbers, and exclude unwanted domains
+    const validRestaurants = allMatchingRestaurants.filter(
+      (restaurant) =>
+        hasValidEmail(restaurant) && hasValidPhoneNumber(restaurant) && !isExcludedDomain(restaurant.website),
+    )
+
+    console.log(`After filtering, ${validRestaurants.length} restaurants have valid emails and phone numbers`)
 
     // Get total count for pagination
-    const totalCount = validEmailRestaurants.length
-    console.log(`Found ${totalCount} matching restaurants with valid emails`)
+    const totalCount = validRestaurants.length
 
     // Apply pagination manually
     const skip = (page - 1) * limit
-    const paginatedRestaurants = validEmailRestaurants.slice(skip, skip + limit)
+    const paginatedRestaurants = validRestaurants.slice(skip, skip + limit)
 
-    console.log(`Fetched ${paginatedRestaurants.length} restaurants from search`)
+    console.log(`Returning ${paginatedRestaurants.length} restaurants for page ${page}`)
 
     // Convert MongoDB documents to plain objects
     const serializedRestaurants = paginatedRestaurants.map((restaurant) => ({
@@ -244,6 +400,7 @@ export async function searchRestaurants(query: string, page = 1, limit = 8) {
   }
 }
 
+// Update the getAllRestaurants function to filter by valid phone numbers
 export async function getAllRestaurants(query = "", sortBy = "recent") {
   try {
     console.log(`Fetching all restaurants matching "${query}" for export...`)
@@ -269,6 +426,7 @@ export async function getAllRestaurants(query = "", sortBy = "recent") {
                 $ne: "N/A",
                 $ne: "n/a",
               },
+              phonenumber: { $exists: true },
             },
             {
               $or: [
@@ -307,6 +465,7 @@ export async function getAllRestaurants(query = "", sortBy = "recent") {
             $ne: "N/A",
             $ne: "n/a",
           },
+          phonenumber: { $exists: true },
         }
 
     // Determine sort order
@@ -327,13 +486,16 @@ export async function getAllRestaurants(query = "", sortBy = "recent") {
     // Get all restaurants that match the filter
     const allRestaurants = await db.collection("restaurants").find(filter).sort(sortOptions).toArray()
 
-    // Filter restaurants with valid emails
-    const validEmailRestaurants = allRestaurants.filter(hasValidEmail)
+    // Filter restaurants with valid emails, valid phone numbers, and exclude unwanted domains
+    const validRestaurants = allRestaurants.filter(
+      (restaurant) =>
+        hasValidEmail(restaurant) && hasValidPhoneNumber(restaurant) && !isExcludedDomain(restaurant.website),
+    )
 
-    console.log(`Found ${validEmailRestaurants.length} restaurants with valid emails for export`)
+    console.log(`Found ${validRestaurants.length} restaurants with valid emails and phone numbers for export`)
 
     // Convert MongoDB documents to plain objects
-    const serializedRestaurants = validEmailRestaurants.map((restaurant) => ({
+    const serializedRestaurants = validRestaurants.map((restaurant) => ({
       ...restaurant,
       _id: restaurant._id.toString(),
       scraped_at: restaurant.scraped_at ? new Date(restaurant.scraped_at).toISOString() : null,
