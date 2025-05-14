@@ -1,9 +1,9 @@
 @echo off
-title Restaurant Scraper - Development Server
+title Veda Scraper - Development Server
 color 0A
 
 echo ======================================================
-echo    RESTAURANT SCRAPER - STARTING SERVER
+echo    VEDA SCRAPER - STARTING SERVER
 echo ======================================================
 echo.
 echo Starting the development server...
