@@ -133,13 +133,11 @@ const UK_POSTCODE_AREAS = {
   ZE: "Lerwick",
 }
 
-// Flask API base URL - changed to the specified IP address
-// const FLASK_API_URL = "http://34.89.71.45:5000"
-
 export default function ScrapePage() {
   const router = useRouter()
-  const [city, setCity] = useState("Aberdeen")
-  const [keyword, setKeyword] = useState("restaurants")
+  // Changed default values to empty strings
+  const [city, setCity] = useState("")
+  const [keyword, setKeyword] = useState("")
   const [isSearching, setIsSearching] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [cityResults, setCityResults] = useState<City[]>([])
@@ -173,12 +171,12 @@ export default function ScrapePage() {
     }
   }, [statusPolling])
 
-  // Start searching immediately when component mounts
-  useEffect(() => {
-    if (city.trim().length >= 2) {
-      handleCitySearch(city)
-    }
-  }, [])
+  // Start searching immediately when component mounts - removed this effect since we want empty defaults
+  // useEffect(() => {
+  //   if (city.trim().length >= 2) {
+  //     handleCitySearch(city)
+  //   }
+  // }, [])
 
   // Replace the handleCitySearch function with this new implementation
   const handleCitySearch = (value: string) => {
@@ -223,7 +221,6 @@ export default function ScrapePage() {
           matchingCities.push({
             _id: code,
             postcode_area: code,
-            area_covered: cityName,
             area_covered: cityName,
             population_2011: 0,
             households_2011: 0,
@@ -324,8 +321,8 @@ export default function ScrapePage() {
     // First get status immediately
     fetchScraperStatus(statusUrl)
 
-    // Then set up polling with a reasonable interval
-    const intervalId = setInterval(() => fetchScraperStatus(statusUrl), 5000)
+    // Then set up polling with a 60-second interval (changed from 5 seconds)
+    const intervalId = setInterval(() => fetchScraperStatus(statusUrl), 60000)
     setStatusPolling(intervalId)
   }
 
@@ -372,8 +369,8 @@ export default function ScrapePage() {
           setStatusMessage(`Email scraping failed: ${data.message || "Unknown error"}`)
           setEmailScrapingStarted(false)
         } else {
-          // Continue polling for email status
-          setTimeout(() => fetchScraperStatus(statusUrl, true), 5000)
+          // Continue polling for email status - use 60 seconds here too
+          setTimeout(() => fetchScraperStatus(statusUrl, true), 60000)
         }
       } else {
         // Handle GMaps scraping status
@@ -436,15 +433,15 @@ export default function ScrapePage() {
           setIsLoading(false)
         } else {
           setStatusMessage(`Status: ${data.status}`)
-          // Continue polling for other statuses
-          setTimeout(() => fetchScraperStatus(statusUrl), 5000)
+          // Continue polling for other statuses - use 60 seconds here too
+          setTimeout(() => fetchScraperStatus(statusUrl), 60000)
         }
       }
     } catch (error) {
       console.error(`Error polling ${isEmailStatus ? "email" : "gmaps"} status:`, error)
       setStatusMessage(`Error checking status: ${error instanceof Error ? error.message : "Unknown error"}`)
-      // Continue polling despite errors, but with a longer delay
-      setTimeout(() => fetchScraperStatus(statusUrl, isEmailStatus), 10000)
+      // Continue polling despite errors, but with a longer delay - use 60 seconds here too
+      setTimeout(() => fetchScraperStatus(statusUrl, isEmailStatus), 60000)
     }
   }
 
@@ -531,7 +528,7 @@ export default function ScrapePage() {
             type="text"
             id="keyword"
             name="keyword"
-            placeholder="Enter keyword to search (e.g. restaurant, cafe)"
+            placeholder="Enter business type (e.g. restaurant, cafe)"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             disabled={isLoading}
